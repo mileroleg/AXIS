@@ -2,7 +2,9 @@ const STORAGE_KEYS = {
   serviceCenters: 'axios_demo_service_centers',
   windows: 'axios_demo_windows',
   requests: 'axios_demo_requests',
-  seeded: 'axios_demo_seeded_v1'
+  seeded: 'axios_demo_seeded_v1',
+  fixedDateEnabled: 'axios_demo_fixed_date_enabled',
+  fixedDateValue: 'axios_demo_fixed_date_value'
 };
 
 const PAYMENT_METHODS = ['Наличные', 'Карта', 'Перевод', 'QR'];
@@ -18,7 +20,14 @@ const readJson = (key, fallback) => {
   }
 };
 const writeJson = (key, value) => localStorage.setItem(key, JSON.stringify(value));
-const toDateKey = (date = new Date()) => date.toISOString().slice(0, 10);
+const getNow = () => {
+  const fixedEnabled = localStorage.getItem(STORAGE_KEYS.fixedDateEnabled) === '1';
+  const fixedDateValue = localStorage.getItem(STORAGE_KEYS.fixedDateValue);
+  if (fixedEnabled && fixedDateValue && /^\d{4}-\d{2}-\d{2}$/.test(fixedDateValue)) return new Date(`${fixedDateValue}T12:00:00`);
+  return new Date();
+};
+
+const toDateKey = (date = getNow()) => date.toISOString().slice(0, 10);
 
 const getState = () => ({
   serviceCenters: readJson(STORAGE_KEYS.serviceCenters, []),
@@ -156,7 +165,8 @@ const getWindowsByServiceCenter = async (serviceCenterId, date) => {
 const searchServiceCenters = async (filters = {}) => {
   await delay();
   const state = getState();
-  const now = Date.now();
+  const nowDate = getNow();
+  const now = nowDate.getTime();
   const in24h = new Date(now + 24 * 60 * 60 * 1000);
 
   return state.serviceCenters
@@ -174,7 +184,7 @@ const searchServiceCenters = async (filters = {}) => {
       if (filters.hasWindows24h) {
         return centerWindows.some((win) => {
           const winDate = new Date(`${win.date}T${win.startTime}:00`);
-          return winDate >= new Date(now) && winDate <= in24h;
+          return winDate >= nowDate && winDate <= in24h;
         });
       }
 

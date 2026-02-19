@@ -3,6 +3,7 @@ import { mockApi } from './mockApi.js';
 const routes = {
   '/auth': { title: 'Авторизация', description: 'Вход по телефону (демо)', layout: 'plain' },
   '/role': { title: 'Выбор роли', description: 'Кто вы в системе AXIOS', layout: 'plain' },
+  '/demo': { title: 'Demo Panel', description: 'Управление demo-данными и быстрые входы', layout: 'plain' },
 
   '/client': { title: 'Главная клиента', description: 'Сводка по клиентскому кабинету', layout: 'client' },
   '/client/search': { title: 'Поиск СТО', description: 'Поиск и фильтры сервисов', layout: 'client' },
@@ -31,10 +32,19 @@ const stoNav = [
 const STORAGE_KEYS = {
   users: 'axios_demo_users',
   authPhone: 'axios_demo_auth_phone',
-  session: 'axios_demo_session'
+  session: 'axios_demo_session',
+  fixedDateEnabled: 'axios_demo_fixed_date_enabled',
+  fixedDateValue: 'axios_demo_fixed_date_value'
 };
 
-const toDateKey = (date = new Date()) => date.toISOString().slice(0, 10);
+const getNow = () => {
+  const fixedEnabled = localStorage.getItem(STORAGE_KEYS.fixedDateEnabled) === '1';
+  const fixedDateValue = localStorage.getItem(STORAGE_KEYS.fixedDateValue);
+  if (fixedEnabled && fixedDateValue && /^\d{4}-\d{2}-\d{2}$/.test(fixedDateValue)) return new Date(`${fixedDateValue}T12:00:00`);
+  return new Date();
+};
+
+const toDateKey = (date = getNow()) => date.toISOString().slice(0, 10);
 
 const state = {
   clientSearch: {
@@ -126,6 +136,23 @@ const ensureStoForUser = async (user) => {
 const updateUser = (updatedUser) => {
   const users = getUsers();
   saveUsers(users.map((item) => (item.id === updatedUser.id ? updatedUser : item)));
+};
+
+const upsertUserByRole = async (role) => {
+  const users = getUsers();
+  const existing = users.find((item) => item.role === role);
+  if (existing) return role === 'sto' ? ensureStoForUser(existing) : existing;
+
+  const newUser = {
+    id: uid(),
+    role,
+    phone: role === 'sto' ? '+7 (900) 000-00-99' : '+7 (900) 000-00-11',
+    createdAt: new Date().toISOString()
+  };
+
+  users.push(newUser);
+  saveUsers(users);
+  return role === 'sto' ? ensureStoForUser(newUser) : newUser;
 };
 
 const isRouteMatch = (routePath, currentPath) => {
@@ -222,6 +249,36 @@ const authFormHtml = () => {
         <button class="w-full min-h-12 rounded-xl bg-slate-900 px-4 text-sm font-semibold text-white">Войти</button>
       </form>
       <p id="auth-error" class="mt-3 text-sm text-rose-600"></p>
+    </section>
+  `;
+};
+
+const demoPanelHtml = () => {
+  const fixedEnabled = localStorage.getItem(STORAGE_KEYS.fixedDateEnabled) === '1';
+  const fixedDateValue = localStorage.getItem(STORAGE_KEYS.fixedDateValue) || toDateKey();
+
+  return `
+    <section class="${cardClass}">
+      <h2 class="text-lg font-semibold">Demo Panel</h2>
+      <p class="mt-1 text-sm text-slate-600">Быстрое управление демо без ручной чистки localStorage.</p>
+
+      <div class="mt-3 space-y-2">
+        <button data-demo-action="reset" class="w-full min-h-12 rounded-xl border border-rose-300 text-sm text-rose-700">Reset demo data</button>
+        <button data-demo-action="login-client" class="w-full min-h-12 rounded-xl bg-blue-600 text-sm font-semibold text-white">Login as Client</button>
+        <button data-demo-action="login-sto" class="w-full min-h-12 rounded-xl bg-slate-900 text-sm font-semibold text-white">Login as STO</button>
+      </div>
+    </section>
+
+    <section class="${cardClass}">
+      <h3 class="text-base font-semibold">Use fixed date</h3>
+      <p class="mt-1 text-xs text-slate-500">Фиксирует «сегодня/завтра» для стабильного демо.</p>
+      <label class="mt-3 flex min-h-12 items-center justify-between rounded-xl border border-slate-200 px-3">
+        <span class="text-sm">Включить фиксированную дату</span>
+        <input id="demo-fixed-enabled" type="checkbox" ${fixedEnabled ? 'checked' : ''} />
+      </label>
+      <input id="demo-fixed-date" type="date" value="${fixedDateValue}" class="mt-2 w-full min-h-12 rounded-xl border border-slate-300 px-3 text-sm" ${fixedEnabled ? '' : 'disabled'} />
+      <button data-demo-action="save-fixed-date" class="mt-2 w-full min-h-12 rounded-xl border border-slate-300 text-sm">Сохранить fixed date</button>
+      <p class="mt-2 text-xs text-slate-500">Текущий режим: ${fixedEnabled ? `фиксированная дата ${fixedDateValue}` : 'реальная текущая дата'}</p>
     </section>
   `;
 };
@@ -529,6 +586,8 @@ const layoutHtml = (route, path) => {
     ? `${authFormHtml()}${routeButtonsHtml(path)}`
     : path === '/role'
       ? `${roleSelectionHtml()}${routeButtonsHtml(path)}`
+      : path === '/demo'
+        ? `${demoPanelHtml()}${routeButtonsHtml(path)}`
       : path === '/client/search'
         ? `${clientSearchSectionHtml()}${clientSearchHtml()}`
         : path.startsWith('/client/service/')
@@ -898,6 +957,60 @@ const bindAuthActions = () => {
   });
 };
 
+const bindDemoActions = () => {
+  const fixedEnabled = app.querySelector('#demo-fixed-enabled');
+  const fixedDate = app.querySelector('#demo-fixed-date');
+
+  fixedEnabled?.addEventListener('change', () => {
+    if (fixedDate) fixedDate.disabled = !fixedEnabled.checked;
+  });
+
+  app.querySelectorAll('[data-demo-action]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const action = button.getAttribute('data-demo-action');
+      if (!action) return;
+
+      if (action === 'reset') {
+        const fixedEnabledValue = localStorage.getItem(STORAGE_KEYS.fixedDateEnabled);
+        const fixedDateValue = localStorage.getItem(STORAGE_KEYS.fixedDateValue);
+        localStorage.clear();
+        if (fixedEnabledValue) localStorage.setItem(STORAGE_KEYS.fixedDateEnabled, fixedEnabledValue);
+        if (fixedDateValue) localStorage.setItem(STORAGE_KEYS.fixedDateValue, fixedDateValue);
+        await mockApi.ensureSeed();
+        navigate('/demo', true);
+        return;
+      }
+
+      if (action === 'login-client') {
+        const user = await upsertUserByRole('client');
+        writeJson(STORAGE_KEYS.session, { userId: user.id });
+        navigate('/client/search');
+        return;
+      }
+
+      if (action === 'login-sto') {
+        const user = await upsertUserByRole('sto');
+        writeJson(STORAGE_KEYS.session, { userId: user.id });
+        navigate('/sto/windows');
+        return;
+      }
+
+      if (action === 'save-fixed-date') {
+        const enabled = fixedEnabled?.checked;
+        const dateValue = fixedDate?.value || toDateKey();
+        if (enabled) {
+          localStorage.setItem(STORAGE_KEYS.fixedDateEnabled, '1');
+          localStorage.setItem(STORAGE_KEYS.fixedDateValue, dateValue);
+        } else {
+          localStorage.removeItem(STORAGE_KEYS.fixedDateEnabled);
+        }
+        await mockApi.ensureSeed();
+        navigate('/demo', true);
+      }
+    });
+  });
+};
+
 const bindRoleActions = () => {
   app.querySelectorAll('[data-role]').forEach((button) => {
     button.addEventListener('click', async () => {
@@ -1007,7 +1120,7 @@ const applyRouteGuards = (path) => {
   const session = getSession();
   const user = getCurrentUser();
 
-  if (!session && path !== '/auth') return '/auth';
+  if (!session && !['/auth', '/demo'].includes(path)) return '/auth';
   if (session && !user?.role && !['/auth', '/role'].includes(path)) return '/role';
   if (user?.role === 'client' && path.startsWith('/sto')) return '/client/search';
   if (user?.role === 'sto' && path.startsWith('/client')) return '/sto/windows';
@@ -1058,6 +1171,7 @@ const unsafeRender = () => {
 
   if (guardedPath === '/auth') bindAuthActions();
   if (guardedPath === '/role') bindRoleActions();
+  if (guardedPath === '/demo') bindDemoActions();
   if (guardedPath === '/client/search') {
     bindClientSearchActions();
     if (!state.clientSearch.items.length && !state.clientSearch.loading) loadClientSearch();
