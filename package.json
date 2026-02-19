@@ -1,0 +1,12 @@
+{
+  "name": "axios-demo",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/dev-server.mjs",
+    "build": "node scripts/build.mjs",
+    "lint": "node -e \"console.log('lint: no-op for scaffold step')\""
+  },
+  "devDependencies": {}
+}
