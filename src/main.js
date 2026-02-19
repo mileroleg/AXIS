@@ -156,7 +156,7 @@ const getReliabilityBadges = (metrics) => {
 const navigate = (path, replace = false) => {
   if (replace) history.replaceState({}, '', path);
   else history.pushState({}, '', path);
-  render();
+  safeRender();
 };
 
 const routeButtonsHtml = (currentPath) => `
@@ -556,7 +556,7 @@ const layoutHtml = (route, path) => {
 
 const loadClientSearch = async () => {
   state.clientSearch.loading = true;
-  render();
+  safeRender();
 
   const centers = await mockApi.searchServiceCenters(state.clientSearch.filters);
   const enriched = await Promise.all(
@@ -571,7 +571,7 @@ const loadClientSearch = async () => {
 
   state.clientSearch.items = enriched;
   state.clientSearch.loading = false;
-  render();
+  safeRender();
 };
 
 
@@ -587,7 +587,7 @@ const loadServiceDetails = async (path) => {
     windowsToday: [],
     windowsTomorrow: []
   };
-  render();
+  safeRender();
 
   const center = await mockApi.getServiceCenter(serviceId);
   const today = toDateKey();
@@ -602,7 +602,7 @@ const loadServiceDetails = async (path) => {
     windowsToday,
     windowsTomorrow
   };
-  render();
+  safeRender();
 };
 
 
@@ -611,14 +611,14 @@ const loadRequestForm = async (path) => {
   if (!serviceId || !windowId) return;
 
   state.requestForm = { loading: true, serviceId, windowId, center: null, window: null, error: '' };
-  render();
+  safeRender();
 
   const center = await mockApi.getServiceCenter(serviceId);
   const windows = await mockApi.getWindowsByServiceCenter(serviceId);
   const window = windows.find((item) => item.id === windowId) ?? null;
 
   state.requestForm = { loading: false, serviceId, windowId, center, window, error: '' };
-  render();
+  safeRender();
 };
 
 const loadClientRequests = async () => {
@@ -626,7 +626,7 @@ const loadClientRequests = async () => {
   if (!user) return;
 
   state.clientRequests.loading = true;
-  render();
+  safeRender();
 
   const [requests, centers] = await Promise.all([mockApi.listClientRequests(user.id), mockApi.getServiceCenters()]);
   const centerById = Object.fromEntries(centers.map((item) => [item.id, item]));
@@ -647,7 +647,7 @@ const loadClientRequests = async () => {
 
   state.clientRequests.items = items;
   state.clientRequests.loading = false;
-  render();
+  safeRender();
 };
 
 
@@ -660,7 +660,7 @@ const loadStoProfile = async () => {
   state.stoProfile.loading = true;
   state.stoProfile.error = '';
   state.stoProfile.success = '';
-  render();
+  safeRender();
 
   const center = await mockApi.getServiceCenter(ensured.serviceCenterId);
   state.stoProfile = {
@@ -670,7 +670,7 @@ const loadStoProfile = async () => {
     error: '',
     success: ''
   };
-  render();
+  safeRender();
 };
 
 const loadStoWindows = async () => {
@@ -683,12 +683,12 @@ const loadStoWindows = async () => {
   state.stoWindows.error = '';
   state.stoWindows.success = '';
   state.stoWindows.serviceCenterId = ensured.serviceCenterId;
-  render();
+  safeRender();
 
   const windows = await mockApi.getWindowsByServiceCenter(ensured.serviceCenterId, state.stoWindows.date);
   state.stoWindows.items = windows.sort((a, b) => `${a.startTime}`.localeCompare(`${b.startTime}`));
   state.stoWindows.loading = false;
-  render();
+  safeRender();
 };
 
 
@@ -702,7 +702,7 @@ const loadStoRequests = async () => {
   state.stoRequests.error = '';
   state.stoRequests.success = '';
   state.stoRequests.serviceCenterId = ensured.serviceCenterId;
-  render();
+  safeRender();
 
   const [requests, windows] = await Promise.all([
     mockApi.listStoRequests(ensured.serviceCenterId),
@@ -720,7 +720,7 @@ const loadStoRequests = async () => {
     };
   });
   state.stoRequests.loading = false;
-  render();
+  safeRender();
 };
 
 const bindStoRequestsActions = () => {
@@ -779,7 +779,7 @@ const bindStoProfileActions = () => {
     if (!payload.name || !payload.phone || !payload.addressText) {
       state.stoProfile.error = 'Заполните название, телефон и адрес.';
       state.stoProfile.success = '';
-      render();
+      safeRender();
       return;
     }
 
@@ -787,7 +787,7 @@ const bindStoProfileActions = () => {
     state.stoProfile.center = updated;
     state.stoProfile.error = '';
     state.stoProfile.success = 'Профиль сохранён.';
-    render();
+    safeRender();
   });
 };
 
@@ -827,17 +827,17 @@ const bindStoWindowsActions = () => {
     if (!startTime || !endTime) {
       state.stoWindows.error = 'Укажите время начала и окончания.';
       state.stoWindows.success = '';
-      return render();
+      return safeRender();
     }
     if (startTime >= endTime) {
       state.stoWindows.error = 'Время окончания должно быть позже начала.';
       state.stoWindows.success = '';
-      return render();
+      return safeRender();
     }
     if (!Number.isInteger(capacityTotal) || capacityTotal < 1 || capacityTotal > 10) {
       state.stoWindows.error = 'Емкость должна быть целым числом от 1 до 10.';
       state.stoWindows.success = '';
-      return render();
+      return safeRender();
     }
 
     await mockApi.createWindow({
@@ -865,7 +865,7 @@ const bindAuthActions = () => {
   if (logoutBtn) logoutBtn.addEventListener('click', () => {
     localStorage.removeItem(STORAGE_KEYS.session);
     localStorage.removeItem(STORAGE_KEYS.authPhone);
-    render();
+    safeRender();
   });
 
   if (!phoneForm || !codeForm || !errorBox) return;
@@ -1014,7 +1014,40 @@ const applyRouteGuards = (path) => {
   return path;
 };
 
-const render = () => {
+const showAppError = (error) => {
+  console.error('AXIOS render error', error);
+  app.innerHTML = `
+    <main class="mx-auto min-h-screen max-w-md bg-slate-100 px-4 py-6">
+      <section class="${cardClass}">
+        <h1 class="text-lg font-bold text-rose-700">Что-то пошло не так</h1>
+        <p class="mt-2 text-sm text-slate-600">Произошла ошибка рендера demo-приложения. Можно попробовать перезапустить экран или сбросить demo-данные.</p>
+        <div class="mt-4 space-y-2">
+          <button data-action="retry-render" class="w-full min-h-12 rounded-xl bg-blue-600 text-sm font-semibold text-white">Перезагрузить экран</button>
+          <button data-action="reset-demo-error" class="w-full min-h-12 rounded-xl border border-slate-300 text-sm">Сбросить demo-данные</button>
+          <a href="/auth" class="flex min-h-12 items-center justify-center rounded-xl border border-slate-300 text-sm">На авторизацию</a>
+        </div>
+        <details class="mt-3 text-xs text-slate-500">
+          <summary>Технические детали</summary>
+          <pre class="mt-2 overflow-x-auto whitespace-pre-wrap rounded-xl bg-slate-50 p-2">${(error?.stack || error?.message || String(error)).replace(/</g, '&lt;')}</pre>
+        </details>
+      </section>
+    </main>
+  `;
+
+  app.querySelector('[data-action="retry-render"]')?.addEventListener('click', () => {
+    safeRender();
+  });
+
+  app.querySelector('[data-action="reset-demo-error"]')?.addEventListener('click', async () => {
+    localStorage.clear();
+    await mockApi.ensureSeed();
+    navigate('/auth', true);
+  });
+
+  attachNavigation();
+};
+
+const unsafeRender = () => {
   const current = window.location.pathname === '/' ? '/auth' : window.location.pathname;
   const guardedPath = applyRouteGuards(current);
   if (guardedPath !== current) return navigate(guardedPath, true);
@@ -1062,5 +1095,21 @@ const render = () => {
   }
 };
 
-window.addEventListener('popstate', render);
-mockApi.ensureSeed().finally(render);
+const safeRender = () => {
+  try {
+    unsafeRender();
+  } catch (error) {
+    showAppError(error);
+  }
+};
+
+window.addEventListener('error', (event) => {
+  showAppError(event.error || new Error(event.message || 'Unknown app error'));
+});
+
+window.addEventListener('unhandledrejection', (event) => {
+  showAppError(event.reason || new Error('Unhandled promise rejection'));
+});
+
+window.addEventListener('popstate', safeRender);
+mockApi.ensureSeed().then(safeRender).catch(showAppError);

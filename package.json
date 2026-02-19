@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "node scripts/dev-server.mjs",
     "build": "node scripts/build.mjs",
-    "lint": "node -e \"console.log('lint: no-op for scaffold step')\""
+    "lint": "node -e \"console.log('lint: no-op for scaffold step')\"",
+    "qa": "npm run lint && npm run build"
   },
   "devDependencies": {}
 }
