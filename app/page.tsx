@@ -16,6 +16,7 @@ function salaryLabel(salary?: VacancyCard["salary"]) {
 export default function Home() {
   const [filters, setFilters] = useState<SearchFilters>(initial);
   const [vacancies, setVacancies] = useState<VacancyCard[]>([]);
+  const [overflow, setOverflow] = useState<VacancyCard[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>("");
   const [page, setPage] = useState(0);
@@ -38,9 +39,19 @@ export default function Home() {
     try {
       const seen = await getSeen(baseFilters);
       const skipped = await getSkipped();
-      const collected: VacancyCard[] = [];
+      const collected: VacancyCard[] = overflow.filter((v) => !seen.has(v.id) && !skipped.has(v.id));
       let currentPage = nextPage;
       let pages = nextPage;
+      const collectedIds = new Set(collected.map((v) => v.id));
+
+      if (collected.length >= 10) {
+        const top10 = collected.slice(0, 10);
+        const rest = collected.slice(10);
+        await markSeen(baseFilters, top10);
+        setVacancies(top10);
+        setOverflow(rest);
+        return;
+      }
 
       while (collected.length < 10) {
         const q = new URLSearchParams({
@@ -58,15 +69,18 @@ export default function Home() {
         if (!res.ok) throw new Error(`HH API error ${res.status}`);
         const data = await res.json();
         pages = data.pages;
-        const filtered = (data.items as VacancyCard[]).filter((v) => !seen.has(v.id) && !skipped.has(v.id));
+        const filtered = (data.items as VacancyCard[]).filter((v) => !seen.has(v.id) && !skipped.has(v.id) && !collectedIds.has(v.id));
+        filtered.forEach((v) => collectedIds.add(v.id));
         collected.push(...filtered);
-        if (currentPage + 1 >= pages || data.items.length === 0) break;
         currentPage += 1;
+        if (currentPage >= pages || data.items.length === 0) break;
       }
 
       const top10 = collected.slice(0, 10);
+      const rest = collected.slice(10);
       await markSeen(baseFilters, top10);
       setVacancies(top10);
+      setOverflow(rest);
       setPage(currentPage);
     } catch (e) {
       setError((e as Error).message);
@@ -101,8 +115,8 @@ export default function Home() {
           </select>
         </div>
         <div className="flex gap-2">
-          <button className="rounded bg-blue-600 px-3 py-2 text-white" disabled={busy} onClick={() => { setPage(0); fetchTen(0); }}>Искать</button>
-          <button className="rounded bg-slate-300 px-3 py-2" onClick={() => { setFilters(initial); setVacancies([]); setPage(0); }}>Сбросить</button>
+          <button className="rounded bg-blue-600 px-3 py-2 text-white" disabled={busy} onClick={() => { setPage(0); setOverflow([]); fetchTen(0); }}>Искать</button>
+          <button className="rounded bg-slate-300 px-3 py-2" onClick={() => { setFilters(initial); setVacancies([]); setOverflow([]); setPage(0); }}>Сбросить</button>
           <a className="rounded bg-green-600 px-3 py-2 text-white" href={hhLink} target="_blank">Открыть этот поиск на hh.ru</a>
         </div>
         {error && <p className="text-red-600">{error}</p>}
@@ -123,7 +137,7 @@ export default function Home() {
         ))}
       </div>
 
-      {vacancies.length > 0 && <button className="rounded bg-indigo-600 px-4 py-2 text-white" disabled={busy} onClick={() => fetchTen(page + 1)}>Следующие 10</button>}
+      {vacancies.length > 0 && <button className="rounded bg-indigo-600 px-4 py-2 text-white" disabled={busy} onClick={() => fetchTen(page)}>Следующие 10</button>}
     </div>
   );
 }
